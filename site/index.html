@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Awiros Games</title>
+  <meta name="description" content="Daily games leaderboard for the Awiros WhatsApp group.">
+  <meta name="theme-color" content="#F5F6FB" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0D1020" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Awiros Games">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="locked">
+  <header class="appbar">
+    <a class="brand" href="#today"><span class="brand-mark" aria-hidden="true">🏆</span><span>Awiros Games</span></a>
+    <button type="button" class="me-chip" id="meChip" hidden aria-label="Open your profile"></button>
+  </header>
+
+  <main id="main">
+    <div class="notice" id="notice" role="alert" hidden></div>
+
+    <aside class="panel install" id="install" hidden>
+      <span class="install-icon" aria-hidden="true">📲</span>
+      <p id="installText"></p>
+      <button type="button" class="btn btn-primary btn-sm" id="installGo" hidden>Install</button>
+      <button type="button" class="icon-btn" id="installHide" aria-label="Hide this tip">✕</button>
+    </aside>
+
+    <!-- Shown until you are signed in and have joined -->
+    <section class="panel door" id="door" hidden>
+      <div class="door-art" aria-hidden="true">🦐 👁️ 🔗 🗺️ 🟩 📍 🌍</div>
+      <h1 id="doorTitle">Sign in to the board</h1>
+      <p class="muted" id="doorText">The scores are only visible to players who joined.</p>
+      <button type="button" class="btn btn-google" id="googleSignIn">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.8 6C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.2 5.6c4.2-3.9 7.1-9.6 7.1-17.1z"/><path fill="#FBBC05" d="M10.5 28.7a14.5 14.5 0 0 1 0-9.4l-7.8-6a24 24 0 0 0 0 21.4l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.2-5.6c-2.2 1.5-5 2.4-8.7 2.4-6.3 0-11.6-4.1-13.5-9.8l-7.8 6C6.6 42.6 14.6 48 24 48z"/></svg>
+        <span>Continue with Google</span>
+      </button>
+      <form id="joinForm" class="stack-sm" hidden>
+        <label class="field"><span>Your name on the board</span><input id="joinName" maxlength="40" autocomplete="name" required></label>
+        <label class="field"><span>Invite code</span><input id="joinCode" maxlength="80" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="From the WhatsApp group" required></label>
+        <button type="submit" class="btn btn-primary" id="joinGo">Join the board</button>
+        <p class="muted small" id="joinMsg" role="status"></p>
+      </form>
+      <p class="muted small" id="doorAccount" hidden>Signed in as <strong id="doorEmail"></strong> · <button type="button" class="link" id="doorSwitch">use another account</button></p>
+    </section>
+
+    <!-- Today -->
+    <section class="page" id="pageToday" hidden>
+      <nav class="day-nav" aria-label="Day">
+        <button type="button" class="icon-btn round" id="dayBack" aria-label="Previous day">‹</button>
+        <div><div class="day-title" id="dayTitle"></div><div class="muted small" id="dayHint"></div></div>
+        <button type="button" class="icon-btn round" id="dayNext" aria-label="Next day">›</button>
+      </nav>
+
+      <section class="panel post">
+        <div class="post-head">
+          <h2>Post your scores</h2>
+          <button type="button" class="btn btn-primary" id="fromClipboard">📋 Paste from clipboard</button>
+        </div>
+        <p class="muted small">Tap Share in a game, come back and tap the button. One game at a time or several at once.</p>
+        <textarea id="pasteBox" rows="3" placeholder="…or paste the share text here"></textarea>
+        <div class="chips" id="pasteSeen" aria-live="polite"></div>
+        <div class="post-foot">
+          <label class="date-field"><span class="sr-only">Day these scores are for</span><input type="date" id="postDay"></label>
+          <button type="button" class="btn btn-ghost btn-sm" id="pasteClear" hidden>Clear</button>
+          <button type="button" class="btn btn-primary" id="postSave" disabled>Save</button>
+        </div>
+      </section>
+
+      <section class="panel" id="checklist" hidden></section>
+      <div id="dayPodium"></div>
+      <div class="stack" id="dayGames"></div>
+      <p class="muted small center" id="dayFoot"></p>
+    </section>
+
+    <!-- One game's history -->
+    <section class="page" id="pageGame" hidden>
+      <div class="game-tabs" id="gameTabs" role="tablist" aria-label="Games"></div>
+      <header class="page-head"><h2 id="gameName"></h2><span class="muted small" id="gameRule"></span></header>
+      <div class="leader-cards" id="gameLeaders"></div>
+      <div class="stack" id="gameDays"></div>
+      <button type="button" class="btn btn-ghost center-self" id="gameMore" hidden>Show older days</button>
+    </section>
+
+    <!-- Standings -->
+    <section class="page" id="pageStandings" hidden>
+      <header class="page-head">
+        <h2 id="standTitle">This week</h2>
+        <div class="segmented" id="standPeriod" role="tablist" aria-label="Period">
+          <button type="button" data-period="week">Week</button>
+          <button type="button" data-period="month">Month</button>
+          <button type="button" data-period="all">All time</button>
+        </div>
+      </header>
+      <div id="standPodium"></div>
+      <section class="panel flush"><div class="scroll-x"><table class="table" id="standTable"></table></div></section>
+      <div id="standAwards"></div>
+      <p class="muted small">Every game, every day: 3 points for 1st, 2 for 2nd and 1 for 3rd, plus a crown for 1st. A game only counts once two people have posted it. Equal scores share the place.</p>
+    </section>
+
+    <!-- A player's profile -->
+    <section class="page" id="pagePlayer" hidden>
+      <div class="stack" id="playerBody"></div>
+      <section class="panel" id="account" hidden>
+        <h3>Account</h3>
+        <p class="muted small" id="accountEmail"></p>
+        <form class="inline-form" id="renameForm">
+          <label class="field grow"><span>Display name</span><input id="renameInput" maxlength="40" autocomplete="off"></label>
+          <button type="submit" class="btn">Save name</button>
+        </form>
+        <button type="button" class="btn btn-ghost" id="signOut">Sign out</button>
+      </section>
+    </section>
+  </main>
+
+  <nav class="tabbar" id="tabbar" aria-label="Sections">
+    <a href="#today" data-tab="today"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16M8 3v3M16 3v3M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z"/><path d="M8.5 14l2.2 2.2 4.8-4.7"/></svg><span>Today</span></a>
+    <a href="#games" data-tab="games"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8.5h4M9 6.5v4M15.5 9h.01M17.5 11h.01"/><path d="M7.5 4.5h9a5 5 0 0 1 4.9 6l-1 5.4a2.6 2.6 0 0 1-4.6 1.1L14 15h-4l-1.8 2a2.6 2.6 0 0 1-4.6-1.1l-1-5.4a5 5 0 0 1 4.9-6z"/></svg><span>Games</span></a>
+    <a href="#standings" data-tab="standings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V13h4v7M10 20V8h4v12M16 20v-9h4v9M3 20h18"/></svg><span>Standings</span></a>
+    <a href="#me" data-tab="me"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.9-3.6 3.7-5.4 7-5.4s6.1 1.8 7 5.4"/></svg><span>Me</span></a>
+  </nav>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+  <script src="config.js"></script>
+  <script src="js/games.js"></script>
+  <script src="js/scoring.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "awiros-games",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Daily games leaderboard for the Awiros WhatsApp group.",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "serve": "npx --yes http-server site -p 8000 -c-1"
+  },
+  "devDependencies": {
+    "supabase": "^2.122.0"
+  }
+}

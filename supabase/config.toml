@@ -1,0 +1,4 @@
+# The api function checks the Google sign-in token itself (and /ping is public),
+# so the platform-level JWT check is off.
+[functions.api]
+verify_jwt = false

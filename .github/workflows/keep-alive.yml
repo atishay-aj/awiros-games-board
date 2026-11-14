@@ -1,0 +1,21 @@
+name: Keep database awake
+
+# Free Supabase projects pause after about a week without database activity.
+# One call a day to the public, data-free /ping keeps it running through holidays.
+on:
+  schedule:
+    - cron: '30 3 * * *' # 09:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ping the api
+        run: |
+          api=$(grep -oE "https://[^']+/functions/v1/api" site/config.js)
+          curl --fail --silent --show-error --max-time 30 "$api/ping"
