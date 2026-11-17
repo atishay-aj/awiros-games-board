@@ -183,8 +183,8 @@
   }
 
   // ---------------------------------------------------------------- shared pieces
-  // Scores out of 100: whole numbers stay whole, otherwise one decimal.
-  function fmt(score) { return score == null ? '–' : (Math.round(score * 10) / 10).toString(); }
+  // Scores out of 100, shown as whole numbers.
+  function fmt(score) { return score == null ? '–' : String(Math.round(score)); }
   function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
   // Top three of an already-placed list: [{ row: { handle, score }, place }]

@@ -77,7 +77,8 @@
   // least that many counted games to be ranked for the day.
   var GAMES_COUNTED = 4;
   function gameScore(place, n) { return 100 * (n - place + 1) / n; }
-  function round1(x) { return Math.round(x * 10) / 10; }
+  // Scores are whole numbers, so the ranking always matches what people see.
+  function whole(x) { return Math.round(x); }
 
   // Every player who posted that day: { handle, score, qualified, counted, played, firsts, games: [{ game, score }], best, needs }
   function dailyScores(scores, day) {
@@ -102,7 +103,7 @@
       t.best = t.games.slice(0, GAMES_COUNTED);
       t.qualified = t.counted >= GAMES_COUNTED;
       t.needs = Math.max(0, GAMES_COUNTED - t.counted);
-      t.score = t.qualified ? round1(t.best.reduce(function (a, g) { return a + g.score; }, 0) / GAMES_COUNTED) : null;
+      t.score = t.qualified ? whole(t.best.reduce(function (a, g) { return a + g.score; }, 0) / GAMES_COUNTED) : null;
       return t;
     });
     return rows.sort(function (a, b) {
@@ -155,7 +156,7 @@
       t.qualified = t.rankedDays >= rule.minDays;
       t.needs = Math.max(0, rule.minDays - t.rankedDays);
       var used = t.dayScores.slice(0, rule.bestDays);
-      t.score = t.qualified ? round1(used.reduce(function (a, b) { return a + b; }, 0) / used.length) : null;
+      t.score = t.qualified ? whole(used.reduce(function (a, b) { return a + b; }, 0) / used.length) : null;
       return t;
     });
     return rows.sort(function (a, b) {
@@ -246,7 +247,7 @@
       var gains = overall.map(function (r) {
         var now = avg(r), then = before[r.handle];
         if (now == null || then == null) return { handle: r.handle, g: null };
-        var g = round1(now - then);
+        var g = whole(now - then);
         return { handle: r.handle, g: g > 0 ? g : null };
       });
       if ((a = top(gains, function (x) { return x.g; }, true))) out.push({ icon: '📈', title: 'Most improved', who: a.who, note: '+' + a.value + ' daily score' });

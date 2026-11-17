@@ -93,6 +93,14 @@ test('daily score: average of best 4 counted games; fewer than 4 is not ranked',
   assert.deepEqual([priya.qualified, priya.needs, priya.score], [false, 1, null]);
 });
 
+test('daily scores are whole numbers', () => {
+  // 3 players, 4 games: b finishes 2,2,1,1 -> 66.7 66.7 100 100 = 83.3, shown and ranked as 83
+  const games = ['krillion', 'perceptle', 'chainle', 'maptap'];
+  const places = { a: [1, 1, 2, 3], b: [2, 2, 1, 1], c: [3, 3, 3, 2] };
+  const scores = games.flatMap((g, i) => Object.entries(places).map(([h, p]) => sc(h, 'd', g, 10 - p[i])));
+  assert.deepEqual(S.dailyScores(scores, 'd').map((r) => [r.handle, r.score]), [['b', 83], ['a', 75], ['c', 42]]);
+});
+
 test('daily ranking: ranked players first, by score', () => {
   const games = ['krillion', 'perceptle', 'chainle', 'maptap'];
   const scores = games.flatMap((g) => [sc('a', 'd', g, 30), sc('b', 'd', g, 20), sc('c', 'd', g, 10)]);
