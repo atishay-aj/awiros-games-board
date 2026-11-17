@@ -183,22 +183,26 @@
   }
 
   // ---------------------------------------------------------------- shared pieces
-  function podium(rows, emptyText) {
-    var withPoints = rows.filter(function (r) { return r.points > 0; });
-    if (!withPoints.length) return h('p.muted.small', emptyText);
-    var placed = S.placeRows(withPoints).slice(0, 3);
-    var order = placed.length > 1 ? [placed[1], placed[0], placed[2]] : [placed[0]];
+  // Scores out of 100: whole numbers stay whole, otherwise one decimal.
+  function fmt(score) { return score == null ? '–' : (Math.round(score * 10) / 10).toString(); }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+  // Top three of an already-placed list: [{ row: { handle, score }, place }]
+  function podium(placed, emptyText) {
+    if (!placed.length) return h('p.muted.small', emptyText);
+    var top = placed.slice(0, 3);
+    var order = top.length > 1 ? [top[1], top[0], top[2]] : [top[0]];
     var cls = ['first', 'second', 'third'];
     return h('div.podium', order.filter(Boolean).map(function (x) {
       var p = Math.min(x.place, 3);
       return h('button.step.' + cls[p - 1] + (isMe(x.row.handle) ? '.mine' : ''), {
         type: 'button', onclick: function () { openPlayer(x.row.handle); },
-        'aria-label': UI.nth(x.place) + ', ' + nameOf(x.row.handle) + ', ' + x.row.points + ' points'
+        'aria-label': UI.nth(x.place) + ', ' + nameOf(x.row.handle) + ', score ' + fmt(x.row.score)
       },
         h('span.medal', ['🥇', '🥈', '🥉'][p - 1]),
         UI.avatar(x.row.handle, nameOf(x.row.handle), p === 1 ? 54 : 42),
         h('span.s-name', nameOf(x.row.handle)),
-        h('span.s-pts', x.row.points + ' pts'),
+        h('span.s-pts.num', fmt(x.row.score)),
         h('span.s-block', String(x.place)));
     }));
   }
@@ -315,16 +319,50 @@
     box.appendChild(h('div.check-head', h('h2', state.day === today() ? 'Your day' : 'Your ' + UI.shortDay(state.day)),
       h('span.muted.small', done === total ? 'All ' + total + ' done 🎉' : done + ' of ' + total + ' played')));
     box.appendChild(h('div.progress', h('i', { style: { width: (done / total * 100) + '%' } })));
+    box.appendChild(h('p.score-line', myDayStatus()));
     box.appendChild(grid);
+  }
+
+  // One line about your daily score: ranked, or what is still missing.
+  function myDayStatus() {
+    var daily = S.dailyScores(state.scores, state.day);
+    var me = daily.find(function (r) { return isMe(r.handle); });
+    var need = S.GAMES_COUNTED;
+    if (!me) return 'Play any ' + need + ' games to get a daily score.';
+    if (me.qualified) {
+      var place = S.placeDaily(daily).find(function (x) { return isMe(x.row.handle); });
+      return h('span', 'Daily score ', h('b.num', fmt(me.score)), ' · ' + UI.nth(place.place) + ' of ' + S.placeDaily(daily).length +
+        (me.counted > need ? ' · best ' + need + ' of ' + me.counted + ' games' : ''));
+    }
+    var waiting = me.played - me.counted;
+    var more = Math.max(0, need - me.played);
+    if (more > 0) return 'Play ' + plural(more, 'more game', 'more games') + ' to get a daily score' + (waiting ? ' (and ' + plural(waiting, 'game is', 'games are') + ' waiting for a second player).' : '.');
+    return 'Waiting for a second player in ' + plural(waiting, 'game', 'games') + ' before your daily score counts.';
   }
 
   function renderDayPodium() {
     var box = UI.clear($('dayPodium'));
     if (!scoresOn(state.day).length) return;
-    var rows = S.totals(state.scores, state.day, state.day);
+    var daily = S.dailyScores(state.scores, state.day);
+    var placed = S.placeDaily(daily);
+    var list = h('ol.rank-list.overall');
+    placed.forEach(function (x) {
+      var r = x.row;
+      list.appendChild(h('li' + (isMe(r.handle) ? '.mine' : ''),
+        h('span.place' + (x.place === 1 ? '.gold' : ''), String(x.place)),
+        h('span.who-cell', who(r.handle, 24), h('span.extra-note', r.counted > S.GAMES_COUNTED ? 'best ' + S.GAMES_COUNTED + ' of ' + r.counted + ' games' : r.counted + ' games')),
+        h('span.val.num', fmt(r.score)), h('span')));
+    });
+    daily.filter(function (r) { return !r.qualified; }).forEach(function (r) {
+      var more = Math.max(0, S.GAMES_COUNTED - r.played);
+      list.appendChild(h('li.unranked' + (isMe(r.handle) ? '.mine' : ''), h('span.place', '–'),
+        h('span.who-cell', who(r.handle, 24), h('span.extra-note', more ? 'needs ' + plural(more, 'more game', 'more games') : 'waiting for others')),
+        h('span.val.muted', '–'), h('span')));
+    });
     box.appendChild(h('section.panel',
-      h('div.panel-head', h('h2', state.day === today() ? 'Today’s leaders' : 'Leaders'), UI.shareButton('Share', function () { return dayText(state.day); })),
-      podium(rows, 'Points start once two people post the same game: 3 for 1st, 2 for 2nd, 1 for 3rd.')));
+      h('div.panel-head', h('h2', state.day === today() ? 'Today’s ranking' : 'Day ranking'), UI.shareButton('Share', function () { return dayText(state.day); })),
+      podium(placed, 'Nobody has a daily score yet: it needs ' + S.GAMES_COUNTED + ' games that someone else also played.'),
+      daily.length ? list : null));
   }
 
   $('dayBack').addEventListener('click', function () {
@@ -382,9 +420,10 @@
 
   function celebrate(day, games) {
     var leading = games.filter(function (g) { return rank(day, g).some(function (r) { return r.crown && isMe(r.score.handle); }); });
-    var rows = S.totals(state.scores, day, day);
-    var topOfDay = rows.length > 1 && rows[0].points > 0 && isMe(rows[0].handle) && rows[1].points < rows[0].points;
-    if (topOfDay) { UI.confetti(); UI.toast('🏆 You are leading the day!', 3600); }
+    var placed = S.placeDaily(S.dailyScores(state.scores, day));
+    var firsts = placed.filter(function (x) { return x.place === 1; });
+    var topOfDay = placed.length > 1 && firsts.length === 1 && isMe(firsts[0].row.handle);
+    if (topOfDay) { UI.confetti(); UI.toast('🏆 You are leading the day with ' + fmt(firsts[0].row.score) + '!', 3600); }
     else if (leading.length) { UI.confetti(); UI.toast('👑 You lead ' + leading.map(function (g) { return G.BY_ID[g].name; }).join(' & ') + '!', 3600); }
     else UI.toast('Saved ✓');
   }
@@ -441,31 +480,39 @@
     if (p.kind === 'all' || (oldest && state.since && oldest < state.since)) needEverything();
     Array.prototype.forEach.call($('standPeriod').children, function (b) { b.setAttribute('aria-selected', b.dataset.period === state.period ? 'true' : 'false'); });
     $('standTitle').textContent = p.title;
-    var rows = S.totals(state.scores, p.from, p.to);
+    var rule = { bestDays: S.PERIOD_RULES[p.kind].bestDays, minDays: S.minDaysFor(p) };
+    var rows = S.periodScores(state.scores, p);
+    var placed = periodPlaces(rows);
+    var crowns = {};
+    S.totals(state.scores, p.from, p.to).forEach(function (t) { crowns[t.handle] = t; });
 
     var top = UI.clear($('standPodium'));
     var panel = h('section.panel', h('div.panel-head',
       h('h2', p.kind === 'week' ? 'Champion of the week' : p.kind === 'month' ? 'Champion of the month' : 'Hall of fame'),
       rows.length ? UI.shareButton('Share', function () { return periodText(p); }) : null));
-    panel.appendChild(podium(rows, rows.length ? 'No points yet: a game needs two players on the same day.' : 'Nothing posted yet in this period.'));
+    panel.appendChild(podium(placed, rows.length ? 'Nobody has ' + plural(rule.minDays, 'ranked day', 'ranked days') + ' yet in this period.' : 'Nothing posted yet in this period.'));
     if (p.kind === 'week') {
-      var last = S.placeRows(S.totals(state.scores, p.prevFrom, p.prevTo).filter(function (r) { return r.points > 0; }));
-      var champs = last.filter(function (x) { return x.place === 1; });
-      if (champs.length) panel.appendChild(h('p.muted.small', { style: { marginTop: '12px' } }, 'Last week: ' + champs.map(function (x) { return nameOf(x.row.handle); }).join(' & ') + ' won with ' + champs[0].row.points + ' points'));
+      var champs = periodPlaces(S.periodScores(state.scores, { kind: 'week', from: p.prevFrom, to: p.prevTo })).filter(function (x) { return x.place === 1; });
+      if (champs.length) panel.appendChild(h('p.muted.small', { style: { marginTop: '12px' } }, 'Last week: ' + champs.map(function (x) { return nameOf(x.row.handle); }).join(' & ') + ' won with ' + fmt(champs[0].row.score)));
     }
     top.appendChild(panel);
 
     var table = UI.clear($('standTable'));
-    table.appendChild(h('thead', h('tr', h('th', ''), h('th.l', 'Player'), h('th', 'Pts'), h('th', '👑'), h('th', 'Days'),
+    table.appendChild(h('thead', h('tr', h('th', ''), h('th.l', 'Player'), h('th', { title: 'Average of the best ' + (isFinite(rule.bestDays) ? rule.bestDays + ' ' : '') + 'daily scores' }, 'Score'),
+      h('th', { title: 'Days with a daily score' }, 'Days'), h('th', { title: 'Days finished 1st overall' }, '🥇'), h('th', { title: 'Game crowns' }, '👑'),
       G.LIST.map(function (g, i) { return h('th' + (i === 0 ? '.div' : ''), { title: g.name + ' crowns' }, g.icon); }))));
     var body = h('tbody');
-    if (!rows.length) body.appendChild(h('tr', h('td.l.muted', { colSpan: 5 + G.LIST.length }, 'Nothing posted in this period.')));
-    S.placeRows(rows).forEach(function (x) {
-      var r = x.row;
-      body.appendChild(h('tr' + (isMe(r.handle) ? '.mine' : ''),
-        h('td.pl', String(x.place)), h('td.l', who(r.handle, 24)), h('td.pts', String(r.points)),
-        h('td' + (r.crowns ? '' : '.zero'), r.crowns ? String(r.crowns) : '·'), h('td', String(r.dayCount)),
-        G.LIST.map(function (g, i) { var c = r.crownsByGame[g.id] || 0; return h('td' + (c ? '' : '.zero') + (i === 0 ? '.div' : ''), c ? String(c) : '·'); })));
+    if (!rows.length) body.appendChild(h('tr', h('td.l.muted', { colSpan: 6 + G.LIST.length }, 'Nothing posted in this period.')));
+    var placeOf = {}; placed.forEach(function (x) { placeOf[x.row.handle] = x.place; });
+    rows.forEach(function (r) {
+      var c = crowns[r.handle] || { crowns: 0, crownsByGame: {} };
+      var cell = h('td.l', who(r.handle, 24));
+      if (!r.qualified) cell.appendChild(h('div.extra-note', 'needs ' + plural(r.needs, 'more ranked day', 'more ranked days')));
+      body.appendChild(h('tr' + (isMe(r.handle) ? '.mine' : '') + (r.qualified ? '' : '.unranked'),
+        h('td.pl', r.qualified ? String(placeOf[r.handle]) : '–'), cell, h('td.pts', fmt(r.score)),
+        h('td', String(r.rankedDays)), h('td' + (r.wins ? '' : '.zero'), r.wins ? String(r.wins) : '·'),
+        h('td' + (c.crowns ? '' : '.zero'), c.crowns ? String(c.crowns) : '·'),
+        G.LIST.map(function (g, i) { var n = c.crownsByGame[g.id] || 0; return h('td' + (n ? '' : '.zero') + (i === 0 ? '.div' : ''), n ? String(n) : '·'); })));
     });
     table.appendChild(body);
 
@@ -481,6 +528,8 @@
     var b = e.target.closest('button'); if (!b) return;
     state.period = b.dataset.period; UI.storeSet('period', state.period); renderStandings();
   });
+  // Qualified period rows with shared places on equal scores.
+  function periodPlaces(rows) { return S.placeRows(rows.filter(function (r) { return r.qualified; }), 'score'); }
   function namesList(handles) {
     var n = handles.map(nameOf);
     return n.length > 2 ? n.slice(0, 2).join(', ') + ' +' + (n.length - 2) : n.join(' & ');
@@ -531,20 +580,25 @@
     if (!person) { body.appendChild(h('section.panel', h('p.muted', state.busy ? 'Loading…' : 'This player is not on the board.'))); return; }
 
     var now = today();
-    var all = S.totals(state.scores, null, null).find(function (r) { return r.handle === handle; }) || { points: 0, crowns: 0, dayCount: 0 };
+    var crownsAll = (S.totals(state.scores, null, null).find(function (r) { return r.handle === handle; }) || { crowns: 0 }).crowns;
+    var allTime = S.periodScores(state.scores, S.period('all', now)).find(function (r) { return r.handle === handle; }) || { dayScores: [], wins: 0, played: 0 };
+    var avgDaily = allTime.dayScores.length ? allTime.dayScores.reduce(function (a, b) { return a + b; }, 0) / allTime.dayScores.length : null;
     var wk = S.period('week', now);
-    var weekPlace = S.placeRows(S.totals(state.scores, wk.from, wk.to)).find(function (x) { return x.row.handle === handle; });
+    var weekRows = S.periodScores(state.scores, wk);
+    var weekPlace = periodPlaces(weekRows).find(function (x) { return x.row.handle === handle; });
+    var weekRow = weekRows.find(function (r) { return r.handle === handle; });
     var run = S.streak(state.scores, handle, now);
     var since = person.joinedAt ? UI.shortDay(S.dayOf(new Date(person.joinedAt))) : '';
     body.appendChild(h('section.panel',
       h('div.hero', UI.avatar(handle, person.name, 60), h('div', h('h2', person.name, mine ? h('span.tag', 'You') : null), since ? h('p.muted.small', 'On the board since ' + since) : null)),
       h('div.stats', [
-        [weekPlace ? UI.nth(weekPlace.place) : '–', weekPlace ? 'This week · ' + weekPlace.row.points + ' pts' : 'This week'],
+        weekPlace ? [UI.nth(weekPlace.place), 'This week · ' + fmt(weekPlace.row.score)]
+          : ['–', weekRow ? 'This week · needs ' + plural(weekRow.needs, 'more day', 'more days') : 'This week'],
+        [fmt(avgDaily), 'Avg daily score'],
+        [String(allTime.wins), 'Days won'],
         [run.current + (run.current >= 2 ? ' 🔥' : ''), 'Day streak'],
-        [String(run.best), 'Best streak'],
-        [String(all.crowns), 'Crowns'],
-        [String(all.points), 'Points, all time'],
-        [String(all.dayCount), 'Days played']
+        [String(crownsAll), 'Game crowns'],
+        [String(allTime.played), 'Days played']
       ].map(function (s) { return h('div.stat', h('b.num', s[0]), h('span', s[1])); }))));
 
     var per = h('ul.per-game');
@@ -581,14 +635,17 @@
   });
 
   // ---------------------------------------------------------------- WhatsApp texts
-  function medalLine(rows) {
-    return S.placeRows(rows.filter(function (r) { return r.points > 0; })).slice(0, 3).map(function (x) {
-      return ['🥇', '🥈', '🥉'][Math.min(x.place, 3) - 1] + ' ' + nameOf(x.row.handle) + ' ' + x.row.points;
+  // placed: [{ row: { handle, score }, place }]
+  function medalLine(placed) {
+    return placed.slice(0, 3).map(function (x) {
+      return ['🥇', '🥈', '🥉'][Math.min(x.place, 3) - 1] + ' ' + nameOf(x.row.handle) + ' ' + fmt(x.row.score);
     }).join(' · ');
   }
   function dayText(day) {
     var out = ['🎮 *Awiros Games* · ' + UI.longDay(day)];
-    var m = medalLine(S.totals(state.scores, day, day)); if (m) out.push(m + ' pts');
+    var placed = S.placeDaily(S.dailyScores(state.scores, day));
+    if (placed.length) out.push(medalLine(placed));
+    placed.slice(3, 10).forEach(function (x) { out.push(x.place + '. ' + nameOf(x.row.handle) + ' ' + fmt(x.row.score)); });
     out.push('');
     G.LIST.forEach(function (g) {
       var r = rank(day, g.id); if (!r.length) return;
@@ -598,10 +655,10 @@
     return out.join('\n');
   }
   function periodText(p) {
-    var rows = S.totals(state.scores, p.from, p.to);
+    var placed = periodPlaces(S.periodScores(state.scores, p));
     var out = ['📅 *Awiros Games* · ' + p.title + (p.from ? ' (' + UI.shortDay(p.from) + ' – ' + UI.shortDay(p.to) + ')' : '')];
-    var m = medalLine(rows); if (m) out.push(m + ' pts');
-    S.placeRows(rows).slice(3, 10).forEach(function (x) { out.push(x.place + '. ' + nameOf(x.row.handle) + ' ' + x.row.points); });
+    if (placed.length) out.push(medalLine(placed));
+    placed.slice(3, 10).forEach(function (x) { out.push(x.place + '. ' + nameOf(x.row.handle) + ' ' + fmt(x.row.score)); });
     var aw = S.awards(state.scores, p, today());
     if (aw.length) { out.push('', '🏅 *Awards*'); aw.forEach(function (a) { out.push(a.icon + ' ' + a.title + ': ' + namesList(a.who) + ' (' + a.note + ')'); }); }
     out.push('', '📊 ' + SITE);

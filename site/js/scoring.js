@@ -60,12 +60,107 @@
       .sort(function (a, b) { return b.points - a.points || b.crowns - a.crowns || b.dayCount - a.dayCount || (a.handle < b.handle ? -1 : 1); });
   }
 
-  // Add shared places by points: [{ row, place }]
-  function placeRows(rows) {
+  // Add shared places on a numeric field (points by default): [{ row, place }]
+  function placeRows(rows, key) {
+    key = key || 'points';
     var place = 0;
     return rows.map(function (r, i) {
-      if (i === 0 || r.points !== rows[i - 1].points) place = i + 1;
+      if (i === 0 || r[key] !== rows[i - 1][key]) place = i + 1;
       return { row: r, place: place };
+    });
+  }
+
+  // ---- overall ranking: the daily score ----
+  // Each game a player finished among n players scores 100 × (n − place + 1) / n
+  // (1st is always 100; last of 5 gets 20). A game counts once two people posted it.
+  // The daily score is the average of the best GAMES_COUNTED games, and you need at
+  // least that many counted games to be ranked for the day.
+  var GAMES_COUNTED = 4;
+  function gameScore(place, n) { return 100 * (n - place + 1) / n; }
+  function round1(x) { return Math.round(x * 10) / 10; }
+
+  // Every player who posted that day: { handle, score, qualified, counted, played, firsts, games: [{ game, score }], best, needs }
+  function dailyScores(scores, day) {
+    var idx = indexScores(scores.filter(function (s) { return s.day === day; }));
+    var by = {};
+    function row(h) { return by[h] || (by[h] = { handle: h, played: 0, counted: 0, firsts: 0, games: [] }); }
+    Object.keys(idx).forEach(function (key) {
+      var game = key.split('|')[1];
+      var ranked = rankGame(idx[key], game);
+      ranked.forEach(function (r) {
+        var t = row(r.score.handle);
+        t.played++;
+        if (ranked.length < 2) return;
+        t.counted++;
+        if (r.place === 1) t.firsts++;
+        t.games.push({ game: game, score: gameScore(r.place, ranked.length) });
+      });
+    });
+    var rows = Object.keys(by).map(function (h) {
+      var t = by[h];
+      t.games.sort(function (a, b) { return b.score - a.score; });
+      t.best = t.games.slice(0, GAMES_COUNTED);
+      t.qualified = t.counted >= GAMES_COUNTED;
+      t.needs = Math.max(0, GAMES_COUNTED - t.counted);
+      t.score = t.qualified ? round1(t.best.reduce(function (a, g) { return a + g.score; }, 0) / GAMES_COUNTED) : null;
+      return t;
+    });
+    return rows.sort(function (a, b) {
+      if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
+      return (b.score || 0) - (a.score || 0) || b.counted - a.counted || b.firsts - a.firsts || b.played - a.played || (a.handle < b.handle ? -1 : 1);
+    });
+  }
+
+  // Shared places among qualified rows (equal score, games counted and firsts share a place).
+  function placeDaily(rows) {
+    var q = rows.filter(function (r) { return r.qualified; });
+    var place = 0;
+    return q.map(function (r, i) {
+      var p = q[i - 1];
+      if (i === 0 || r.score !== p.score || r.counted !== p.counted || r.firsts !== p.firsts) place = i + 1;
+      return { row: r, place: place };
+    });
+  }
+
+  // A week or month: average of your best `bestDays` ranked days, needing `minDays` of them.
+  var PERIOD_RULES = { week: { bestDays: 5, minDays: 3 }, month: { bestDays: 20, minDays: 8 }, all: { bestDays: Infinity, minDays: 5 } };
+  // Days in a period so far (from/to inclusive), or Infinity for all time.
+  function daysIn(period) {
+    if (!period.from || !period.to) return Infinity;
+    return Math.round((parseDay(period.to) - parseDay(period.from)) / 864e5) + 1;
+  }
+  // Early in a week or month nobody can have the full minimum yet, so it grows with the days so far.
+  function minDaysFor(period) {
+    var rule = PERIOD_RULES[period.kind] || PERIOD_RULES.all;
+    return Math.min(rule.minDays, daysIn(period));
+  }
+  function periodScores(scores, period) {
+    var rule = { bestDays: (PERIOD_RULES[period.kind] || PERIOD_RULES.all).bestDays, minDays: minDaysFor(period) };
+    var days = {};
+    scores.forEach(function (s) { if (inRange(s.day, period.from, period.to)) days[s.day] = true; });
+    var by = {};
+    Object.keys(days).forEach(function (day) {
+      var daily = dailyScores(scores, day);
+      daily.forEach(function (d) {
+        var t = by[d.handle] || (by[d.handle] = { handle: d.handle, dayScores: [], played: 0, wins: 0 });
+        t.played++;
+        if (d.qualified) t.dayScores.push(d.score);
+      });
+      placeDaily(daily).forEach(function (x) { if (x.place === 1) by[x.row.handle].wins++; });
+    });
+    var rows = Object.keys(by).map(function (h) {
+      var t = by[h];
+      t.dayScores.sort(function (a, b) { return b - a; });
+      t.rankedDays = t.dayScores.length;
+      t.qualified = t.rankedDays >= rule.minDays;
+      t.needs = Math.max(0, rule.minDays - t.rankedDays);
+      var used = t.dayScores.slice(0, rule.bestDays);
+      t.score = t.qualified ? round1(used.reduce(function (a, b) { return a + b; }, 0) / used.length) : null;
+      return t;
+    });
+    return rows.sort(function (a, b) {
+      if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
+      return (b.score || 0) - (a.score || 0) || b.rankedDays - a.rankedDays || b.wins - a.wins || (a.handle < b.handle ? -1 : 1);
     });
   }
 
@@ -136,21 +231,25 @@
       return best === null ? null : { who: who, value: best };
     }
     var a;
-    if ((a = top(rows, function (r) { return r.points || null; }, true))) out.push({ icon: '🏆', title: 'Champion', who: a.who, note: a.value + ' points' });
+    var overall = periodScores(scores, period);
+    if ((a = top(overall, function (r) { return r.qualified ? r.score : null; }, true))) out.push({ icon: '🏆', title: 'Champion', who: a.who, note: 'daily score ' + a.value });
+    if ((a = top(overall, function (r) { return r.wins || null; }, true))) out.push({ icon: '🥇', title: 'Day winner', who: a.who, note: a.value + (a.value === 1 ? ' day' : ' days') + ' on top' });
     if ((a = top(rows, function (r) { return r.crowns || null; }, true))) out.push({ icon: '👑', title: 'Crown collector', who: a.who, note: a.value + (a.value === 1 ? ' crown' : ' crowns') });
     if ((a = top(rows, function (r) { return r.posts; }, true))) out.push({ icon: '🎮', title: 'Completionist', who: a.who, note: a.value + ' scores posted' });
     var streaks = rows.map(function (r) { return { handle: r.handle, n: streak(scores, r.handle, today).current }; });
     if ((a = top(streaks, function (x) { return x.n >= 2 ? x.n : null; }, true))) out.push({ icon: '🔥', title: 'On fire', who: a.who, note: a.value + '-day streak' });
     if (period.prevFrom) {
+      // Average of all ranked days, this period against the one before (2+ ranked days in each).
+      var avg = function (r) { return r.dayScores.length >= 2 ? r.dayScores.reduce(function (x, y) { return x + y; }, 0) / r.dayScores.length : null; };
       var before = {};
-      totals(scores, period.prevFrom, period.prevTo).forEach(function (r) { before[r.handle] = r; });
-      var gains = rows.map(function (r) {
-        var p = before[r.handle];
-        if (!p || r.dayCount < 2 || p.dayCount < 2) return { handle: r.handle, g: null };
-        var g = Math.round((r.points / r.dayCount - p.points / p.dayCount) * 10) / 10;
+      periodScores(scores, { kind: period.kind, from: period.prevFrom, to: period.prevTo }).forEach(function (r) { before[r.handle] = avg(r); });
+      var gains = overall.map(function (r) {
+        var now = avg(r), then = before[r.handle];
+        if (now == null || then == null) return { handle: r.handle, g: null };
+        var g = round1(now - then);
         return { handle: r.handle, g: g > 0 ? g : null };
       });
-      if ((a = top(gains, function (x) { return x.g; }, true))) out.push({ icon: '📈', title: 'Most improved', who: a.who, note: '+' + a.value + ' points a day' });
+      if ((a = top(gains, function (x) { return x.g; }, true))) out.push({ icon: '📈', title: 'Most improved', who: a.who, note: '+' + a.value + ' daily score' });
     }
     var wordle = rows.map(function (r) {
       var v = scores.filter(function (s) { return s.handle === r.handle && s.game === 'wordle' && inRange(s.day, period.from, period.to); }).map(function (s) { return s.value; });
@@ -175,6 +274,8 @@
   return {
     dayOf: dayOf, parseDay: parseDay, shift: shift, mondayOf: mondayOf, monthStart: monthStart,
     points: points, indexScores: indexScores, rankGame: rankGame, totals: totals, placeRows: placeRows,
+    GAMES_COUNTED: GAMES_COUNTED, PERIOD_RULES: PERIOD_RULES, gameScore: gameScore,
+    dailyScores: dailyScores, placeDaily: placeDaily, periodScores: periodScores, minDaysFor: minDaysFor,
     streak: streak, gameStats: gameStats, headToHead: headToHead, awards: awards, period: period
   };
 });

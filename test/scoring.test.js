@@ -63,16 +63,100 @@ test('gameStats: average, best label, crowns won out of contested days', () => {
   assert.equal(S.gameStats(scores, 'zz', 'wordle'), null);
 });
 
-test('awards: champion, crowns, streak and ties listed together', () => {
+const ORDER7 = ['krillion', 'perceptle', 'chainle', 'worldle', 'wordle', 'maptap', 'globle'];
+const LOW = ['worldle', 'wordle', 'globle'];
+// One player's day in a 5-player field: places[i] is their place in ORDER7[i] (null = skipped).
+// Four fillers take the other places, so the field is always exactly 5.
+function fieldOfFive(handle, day, places) {
+  const out = [];
+  places.forEach((place, gi) => {
+    if (place == null) return;
+    const game = ORDER7[gi];
+    const valueAt = (p) => (LOW.includes(game) ? p : 60 - p * 10); // place 1 = best value
+    out.push(sc(handle, day, game, valueAt(place)));
+    [1, 2, 3, 4, 5].filter((p) => p !== place).forEach((p, k) => out.push(sc(handle + '-f' + k, day, game, valueAt(p))));
+  });
+  return out;
+}
+test('game score: 1st is always 100, last of 5 gets 20, ties share', () => {
+  assert.equal(S.gameScore(1, 5), 100);
+  assert.equal(S.gameScore(5, 5), 20);
+  assert.equal(S.gameScore(2, 2), 50);
+});
+
+test('daily score: average of best 4 counted games; fewer than 4 is not ranked', () => {
+  const score = (h, places) => S.dailyScores(fieldOfFive(h, 'd', places), 'd').find((r) => r.handle === h);
+  assert.equal(score('neha', [1, 2, 2, 3, 4, 4, 5]).score, 80);          // 100 80 80 60, drops 40 40 20
+  assert.equal(score('atishay', [1, 2, 3, 3, 5, null, null]).score, 75); // 100 80 60 60, drops 20
+  assert.equal(score('rahul', [1, 1, 3, 5, null, null, null]).score, 70); // 100 100 60 20
+  const priya = score('priya', [1, 1, 1, null, null, null, null]);
+  assert.deepEqual([priya.qualified, priya.needs, priya.score], [false, 1, null]);
+});
+
+test('daily ranking: ranked players first, by score', () => {
+  const games = ['krillion', 'perceptle', 'chainle', 'maptap'];
+  const scores = games.flatMap((g) => [sc('a', 'd', g, 30), sc('b', 'd', g, 20), sc('c', 'd', g, 10)]);
+  scores.push(sc('z', 'd', 'krillion', 99)); // only one game: not ranked, though it won that game
+  assert.deepEqual(S.dailyScores(scores, 'd').map((r) => r.handle), ['a', 'b', 'c', 'z']);
+});
+
+test('daily score: a game only one person posted does not count', () => {
   const scores = [
-    sc('a', '2026-11-12', 'krillion', 300), sc('b', '2026-11-12', 'krillion', 100),
-    sc('a', '2026-11-13', 'krillion', 100), sc('b', '2026-11-13', 'krillion', 300),
-    sc('a', '2026-11-14', 'wordle', 3), sc('b', '2026-11-14', 'wordle', 3),
+    ...['krillion', 'perceptle', 'chainle'].flatMap((g) => [sc('a', 'd', g, 9), sc('b', 'd', g, 1)]),
+    sc('a', 'd', 'maptap', 900), // alone in MapTap
   ];
+  const a = S.dailyScores(scores, 'd').find((r) => r.handle === 'a');
+  assert.deepEqual([a.played, a.counted, a.qualified, a.needs], [4, 3, false, 1]);
+});
+
+test('daily places: equal score, games and firsts share a place', () => {
+  const rows = [
+    { handle: 'a', qualified: true, score: 80, counted: 5, firsts: 2 },
+    { handle: 'b', qualified: true, score: 80, counted: 5, firsts: 2 },
+    { handle: 'c', qualified: true, score: 70, counted: 4, firsts: 1 },
+    { handle: 'd', qualified: false, score: null, counted: 2, firsts: 0 },
+  ];
+  assert.deepEqual(S.placeDaily(rows).map((x) => x.row.handle + x.place), ['a1', 'b1', 'c3']);
+});
+
+test('week score: best 5 ranked days, needs 3 ranked days', () => {
+  // Two players, 4 games each, every day; "a" wins every game on days 1-6, loses on day 7.
+  const scores = [];
+  ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'].forEach((day, i) => {
+    ['krillion', 'perceptle', 'chainle', 'maptap'].forEach((g) => {
+      scores.push(sc('a', day, g, i < 6 ? 10 : 1));
+      scores.push(sc('b', day, g, i < 6 ? 1 : 10));
+    });
+  });
+  scores.push(...['krillion', 'perceptle', 'chainle', 'maptap'].flatMap((g) => [sc('c', '2026-11-09', g, 5), sc('c', '2026-11-10', g, 5)]));
+  const w = S.periodScores(scores, S.period('week', '2026-11-15'));
+  const get = (h) => w.find((r) => r.handle === h);
+  assert.deepEqual([get('a').score, get('a').rankedDays, get('a').wins], [100, 7, 6], 'best 5 of 7 days are all 100');
+  assert.equal(get('b').qualified, true);
+  assert.deepEqual([get('c').qualified, get('c').needs], [false, 1]);
+  assert.equal(w[0].handle, 'a');
+});
+
+test('the weekly minimum grows with the days so far: 1 on Monday, 3 from Wednesday', () => {
+  assert.equal(S.minDaysFor(S.period('week', '2026-11-16')), 1); // Monday
+  assert.equal(S.minDaysFor(S.period('week', '2026-11-17')), 2); // Tuesday
+  assert.equal(S.minDaysFor(S.period('week', '2026-11-19')), 3); // Thursday
+  assert.equal(S.minDaysFor(S.period('month', '2026-11-03')), 3);
+  assert.equal(S.minDaysFor(S.period('month', '2026-11-20')), 8);
+  assert.equal(S.minDaysFor(S.period('all', '2026-11-20')), 5);
+});
+
+test('awards: champion by week score, crowns, streak', () => {
+  const scores = [];
+  ['2026-11-12', '2026-11-13', '2026-11-14'].forEach((day) => {
+    ['krillion', 'perceptle', 'chainle', 'maptap'].forEach((g) => { scores.push(sc('a', day, g, 10)); scores.push(sc('b', day, g, 5)); });
+  });
   const aw = S.awards(scores, S.period('week', '2026-11-14'), '2026-11-14');
   const champ = aw.find((x) => x.title === 'Champion');
-  assert.deepEqual(champ.who.sort(), ['a', 'b']);
+  assert.deepEqual([champ.who, champ.note], [['a'], 'daily score 100']);
+  assert.deepEqual(aw.find((x) => x.title === 'Day winner').who, ['a']);
   assert.equal(aw.find((x) => x.title === 'On fire').note, '3-day streak');
+  assert.deepEqual(aw.find((x) => x.title === 'On fire').who.sort(), ['a', 'b']);
 });
 
 test('periods: week starts Monday and compares with last week', () => {

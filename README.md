@@ -7,8 +7,8 @@ A daily leaderboard for the games the Awiros WhatsApp group plays: Krillion, Per
 ## How it works
 
 - **Today:** "Paste from clipboard", a checklist of the 7 games with play links, the day's podium, and each game's ranking with a round-by-round comparison.
-- **Points:** in each game each day, 1st / 2nd / 3rd get 3 / 2 / 1 points and 1st gets a crown, once two people have posted that game. Equal scores share the place.
-- **Standings:** week (from Monday), month and all time, with a podium, crowns per game and awards.
+- **Daily score (overall ranking):** each game scores 0–100 by where you finished among that day's players (`100 × (players − place + 1) ÷ players`, ties share). Your daily score is the average of your best 4 games, and you need 4 games that someone else also played to be ranked. Crowns 👑 still go to 1st place in each game.
+- **Standings:** week (average of best 5 daily scores, at least 3 ranked days, fewer early in the week), month (best 20, at least 8) and all time (every ranked day, at least 5), with a podium, day wins, crowns per game and awards.
 - **Profiles:** streaks, per-game averages and trends, and head-to-head records.
 - **Sharing:** one tap posts a day or week summary to WhatsApp.
 - **App:** installable to the home screen.
