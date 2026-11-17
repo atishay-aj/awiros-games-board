@@ -480,8 +480,8 @@
     if (p.kind === 'all' || (oldest && state.since && oldest < state.since)) needEverything();
     Array.prototype.forEach.call($('standPeriod').children, function (b) { b.setAttribute('aria-selected', b.dataset.period === state.period ? 'true' : 'false'); });
     $('standTitle').textContent = p.title;
-    var rule = { bestDays: S.PERIOD_RULES[p.kind].bestDays, minDays: S.minDaysFor(p) };
     var rows = S.periodScores(state.scores, p);
+    var rule = { bestDays: S.PERIOD_RULES[p.kind].bestDays, minDays: rows.minDays };
     var placed = periodPlaces(rows);
     var crowns = {};
     S.totals(state.scores, p.from, p.to).forEach(function (t) { crowns[t.handle] = t; });

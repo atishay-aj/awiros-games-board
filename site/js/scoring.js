@@ -125,23 +125,19 @@
 
   // A week or month: average of your best `bestDays` ranked days, needing `minDays` of them.
   var PERIOD_RULES = { week: { bestDays: 5, minDays: 3 }, month: { bestDays: 20, minDays: 8 }, all: { bestDays: Infinity, minDays: 5 } };
-  // Days in a period so far (from/to inclusive), or Infinity for all time.
-  function daysIn(period) {
-    if (!period.from || !period.to) return Infinity;
-    return Math.round((parseDay(period.to) - parseDay(period.from)) / 864e5) + 1;
-  }
-  // Early in a week or month nobody can have the full minimum yet, so it grows with the days so far.
-  function minDaysFor(period) {
-    var rule = PERIOD_RULES[period.kind] || PERIOD_RULES.all;
-    return Math.min(rule.minDays, daysIn(period));
-  }
+  // The minimum can never be more than the number of days in the period that already
+  // have a daily ranking. So early in a week (or on a morning before anyone qualifies
+  // today) the ranking still shows, built from the days that are settled.
+  // Returns the rows, with `.minDays` set on the array.
   function periodScores(scores, period) {
-    var rule = { bestDays: (PERIOD_RULES[period.kind] || PERIOD_RULES.all).bestDays, minDays: minDaysFor(period) };
+    var rule = PERIOD_RULES[period.kind] || PERIOD_RULES.all;
     var days = {};
     scores.forEach(function (s) { if (inRange(s.day, period.from, period.to)) days[s.day] = true; });
     var by = {};
+    var rankedDaysInPeriod = 0;
     Object.keys(days).forEach(function (day) {
       var daily = dailyScores(scores, day);
+      if (daily.some(function (d) { return d.qualified; })) rankedDaysInPeriod++;
       daily.forEach(function (d) {
         var t = by[d.handle] || (by[d.handle] = { handle: d.handle, dayScores: [], played: 0, wins: 0 });
         t.played++;
@@ -149,6 +145,7 @@
       });
       placeDaily(daily).forEach(function (x) { if (x.place === 1) by[x.row.handle].wins++; });
     });
+    rule = { bestDays: rule.bestDays, minDays: Math.max(1, Math.min(rule.minDays, rankedDaysInPeriod)) };
     var rows = Object.keys(by).map(function (h) {
       var t = by[h];
       t.dayScores.sort(function (a, b) { return b - a; });
@@ -159,10 +156,12 @@
       t.score = t.qualified ? whole(used.reduce(function (a, b) { return a + b; }, 0) / used.length) : null;
       return t;
     });
-    return rows.sort(function (a, b) {
+    rows.sort(function (a, b) {
       if (a.qualified !== b.qualified) return a.qualified ? -1 : 1;
       return (b.score || 0) - (a.score || 0) || b.rankedDays - a.rankedDays || b.wins - a.wins || (a.handle < b.handle ? -1 : 1);
     });
+    rows.minDays = rule.minDays;
+    return rows;
   }
 
   // Consecutive days with at least one post. The current run stays alive until
@@ -276,7 +275,7 @@
     dayOf: dayOf, parseDay: parseDay, shift: shift, mondayOf: mondayOf, monthStart: monthStart,
     points: points, indexScores: indexScores, rankGame: rankGame, totals: totals, placeRows: placeRows,
     GAMES_COUNTED: GAMES_COUNTED, PERIOD_RULES: PERIOD_RULES, gameScore: gameScore,
-    dailyScores: dailyScores, placeDaily: placeDaily, periodScores: periodScores, minDaysFor: minDaysFor,
+    dailyScores: dailyScores, placeDaily: placeDaily, periodScores: periodScores,
     streak: streak, gameStats: gameStats, headToHead: headToHead, awards: awards, period: period
   };
 });

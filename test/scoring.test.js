@@ -145,13 +145,20 @@ test('week score: best 5 ranked days, needs 3 ranked days', () => {
   assert.equal(w[0].handle, 'a');
 });
 
-test('the weekly minimum grows with the days so far: 1 on Monday, 3 from Wednesday', () => {
-  assert.equal(S.minDaysFor(S.period('week', '2026-11-16')), 1); // Monday
-  assert.equal(S.minDaysFor(S.period('week', '2026-11-17')), 2); // Tuesday
-  assert.equal(S.minDaysFor(S.period('week', '2026-11-19')), 3); // Thursday
-  assert.equal(S.minDaysFor(S.period('month', '2026-11-03')), 3);
-  assert.equal(S.minDaysFor(S.period('month', '2026-11-20')), 8);
-  assert.equal(S.minDaysFor(S.period('all', '2026-11-20')), 5);
+test('the minimum never exceeds the days that already have a ranking', () => {
+  const games = ['krillion', 'perceptle', 'chainle', 'maptap'];
+  const rankedDay = (day) => games.flatMap((g) => [sc('a', day, g, 30), sc('b', day, g, 20)]);
+  // Monday is settled; on Tuesday morning only one game has a second player so far.
+  const scores = [...rankedDay('2026-11-16'), sc('a', '2026-11-17', 'krillion', 30), sc('b', '2026-11-17', 'krillion', 20)];
+  const tue = S.periodScores(scores, S.period('week', '2026-11-17'));
+  assert.equal(tue.minDays, 1, 'only Monday has a ranking yet');
+  assert.deepEqual(tue.map((r) => [r.handle, r.qualified, r.score]), [['a', true, 100], ['b', true, 50]]);
+  // Later in the week the full minimum of 3 applies.
+  const thu = S.periodScores([...rankedDay('2026-11-16'), ...rankedDay('2026-11-17'), ...rankedDay('2026-11-18'), ...rankedDay('2026-11-19')], S.period('week', '2026-11-19'));
+  assert.equal(thu.minDays, 3);
+  // A week with nothing ranked keeps a minimum of 1, so nobody qualifies.
+  const empty = S.periodScores([sc('a', '2026-11-16', 'globle', 3)], S.period('week', '2026-11-17'));
+  assert.deepEqual([empty.minDays, empty[0].qualified], [1, false]);
 });
 
 test('awards: champion by week score, crowns, streak', () => {
