@@ -58,3 +58,19 @@ test('config.js holds only public values', () => {
   const role = JSON.parse(Buffer.from(key.split('.')[1], 'base64url').toString()).role;
   assert.equal(role, 'anon');
 });
+
+test('the API and the page use the same puzzle anchors', () => {
+  const Games = require('../site/js/games.js');
+  const block = api.slice(api.indexOf('const ANCHORS'), api.indexOf('};', api.indexOf('const ANCHORS')));
+  const server = {};
+  block.replace(/(\w+): \{ puzzle: (\d+), day: "([\d-]+)" \}/g, (_, g, n, d) => { server[g] = { puzzle: +n, day: d }; });
+  const client = {};
+  Games.LIST.forEach((g) => { if (g.anchor) client[g.id] = g.anchor; });
+  assert.deepEqual(server, client);
+});
+
+test('the API rejects a puzzle saved on the wrong day, and one puzzle twice', () => {
+  assert.match(api, /is the puzzle for \$\{expected\}, not \$\{day\}/);
+  const migrations = fs.readdirSync(path.join(__dirname, '../supabase/migrations')).map((f) => read('supabase/migrations/' + f)).join('\n');
+  assert.match(migrations, /create unique index scores_one_per_puzzle on public\.scores \(user_id, game, puzzle\)/);
+});

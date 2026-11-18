@@ -145,7 +145,8 @@ textarea { width: 100%; resize: vertical; font-size: 13px; line-height: 1.4; fon
 .post-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
 .post textarea { margin: 10px 0 8px; }
 .post-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.post-foot .date-field { margin-right: auto; }
+.post-foot .date-field { margin-right: auto; display: flex; flex-direction: column; gap: 3px; }
+.post-foot > .btn-primary { margin-left: auto; }
 .post-foot input[type="date"] { padding: 7px 10px; font-size: 14px; }
 .check-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .progress { height: 8px; border-radius: 99px; background: var(--sunken); margin: 10px 0 12px; overflow: hidden; }

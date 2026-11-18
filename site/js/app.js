@@ -282,7 +282,6 @@
     $('dayTitle').textContent = UI.longDay(day);
     $('dayHint').textContent = day === now ? 'Today' : day === S.shift(now, -1) ? 'Yesterday' : '';
     $('dayNext').disabled = day >= now;
-    if ($('postDay').dataset.touched !== 'yes') $('postDay').value = day;
     $('postDay').max = now;
     renderChecklist();
     renderDayPodium();
@@ -371,25 +370,34 @@
     renderToday();
   });
   $('dayNext').addEventListener('click', function () { if (state.day < today()) { state.day = S.shift(state.day, 1); renderToday(); } });
-  $('postDay').addEventListener('input', function () { $('postDay').dataset.touched = 'yes'; showParsed(); });
+  $('postDay').addEventListener('input', showParsed);
 
   // ---- posting ----
+  // Each score is filed under the day its puzzle number (or printed date) belongs to,
+  // whatever day the board is showing. The date box is only for a score that has neither.
+  function relDay(day) {
+    var now = today();
+    return day === now ? 'today' : day === S.shift(now, -1) ? 'yesterday' : UI.longDay(day);
+  }
   function showParsed() {
-    var text = $('pasteBox').value;
-    state.parsed = G.readShares(text);
+    var text = $('pasteBox').value, now = today();
     var box = UI.clear($('pasteSeen'));
-    state.parsed.forEach(function (r) { box.appendChild(h('span.chip', G.BY_ID[r.game].icon + ' ' + G.BY_ID[r.game].name + ' ' + r.label)); });
-    if (text.trim() && !state.parsed.length) box.appendChild(h('span.chip.bad', 'No game score found in this text'));
-    var day = $('postDay').value;
-    state.parsed.forEach(function (r) {
-      var said = r.detail && r.detail.date; if (!said || !day) return;
-      var d = UI.longDay(day).split(', ')[1].split(' '); // ["Nov", "14"]
-      var words = said.replace(',', '').split(/\s+/);
-      var sameMonth = words[0].slice(0, 3).toLowerCase() === d[0].toLowerCase();
-      if (!sameMonth || parseInt(words[1], 10) !== parseInt(d[1], 10)) {
-        box.appendChild(h('span.chip.warn', G.BY_ID[r.game].name + ' says ' + said + ', but you are saving for ' + UI.shortDay(day)));
-      }
+    var undated = false;
+    state.parsed = [];
+    G.readShares(text).forEach(function (r) {
+      var g = G.BY_ID[r.game];
+      var day = G.dayFor(r, now);
+      if (!day) { undated = true; day = $('postDay').value || now; }
+      var name = g.icon + ' ' + g.name + (r.puzzle ? ' #' + r.puzzle : '') + ' ' + r.label;
+      if (day > G.addDays(now, 1)) { box.appendChild(h('span.chip.bad', name + ': that puzzle is not out yet, so it was skipped')); return; }
+      var saved = state.scores.find(function (s) { return isMe(s.handle) && s.game === r.game && s.day === day; });
+      r.day = day;
+      state.parsed.push(r);
+      var note = saved && saved.value === r.value ? ' · already on the board' : saved ? ' · replaces your ' + saved.label : '';
+      box.appendChild(h('span.chip' + (day === now ? '' : '.warn'), name + ' → ' + relDay(day) + note));
     });
+    if (text.trim() && !state.parsed.length && !box.children.length) box.appendChild(h('span.chip.bad', 'No game score found in this text'));
+    $('postDayWrap').hidden = !undated;
     $('postSave').disabled = !state.parsed.length;
     $('pasteClear').hidden = !text.trim();
   }
@@ -407,14 +415,20 @@
   });
   $('postSave').addEventListener('click', function () {
     if (!state.parsed.length) return;
-    var day = $('postDay').value || today();
-    var entries = state.parsed.map(function (r) { return { game: r.game, value: r.value, label: r.label, puzzle: r.puzzle, detail: r.detail }; });
+    var entries = state.parsed.map(function (r) { return { day: r.day, game: r.game, value: r.value, label: r.label, puzzle: r.puzzle, detail: r.detail }; });
+    var days = entries.map(function (e) { return e.day; }).filter(function (d, i, a) { return a.indexOf(d) === i; });
     var btn = $('postSave'); btn.disabled = true; btn.textContent = 'Saving…';
-    call('scores', { day: day, entries: entries, pasted: G.cleanText($('pasteBox').value).slice(0, 4000) }).then(function () {
-      var games = entries.map(function (e) { return e.game; });
-      $('pasteBox').value = ''; $('postDay').dataset.touched = ''; state.day = day;
-      return load().then(function () { celebrate(day, games); });
-    }).catch(function (e) { UI.toast('Not saved: ' + e.message, 4000); })
+    call('scores', { day: days[0], entries: entries, pasted: G.cleanText($('pasteBox').value).slice(0, 4000) }).then(function () {
+      $('pasteBox').value = ''; $('postDay').value = '';
+      state.day = days.length === 1 ? days[0] : today();
+      return load().then(function () {
+        days.forEach(function (d, i) {
+          var games = entries.filter(function (e) { return e.day === d; }).map(function (e) { return e.game; });
+          if (i === 0) celebrate(d, games);
+        });
+        if (days.length > 1 || days[0] !== today()) UI.toast('Saved for ' + days.map(relDay).join(' and ') + ' ✓', 3600);
+      });
+    }).catch(function (e) { UI.toast('Not saved: ' + e.message, 5000); })
       .then(function () { btn.textContent = 'Save'; showParsed(); });
   });
 

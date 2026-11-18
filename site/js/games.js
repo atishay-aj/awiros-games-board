@@ -121,14 +121,19 @@
   // better: 'high' means a bigger value wins, 'low' means fewer guesses win.
   var LIST = [
     { id: 'krillion', name: 'Krillion', icon: '🦐', url: 'https://krillion.io', better: 'high', unit: 'pts',
+      anchor: { puzzle: 122, day: '2026-11-14' },
       head: /^Krillion\s+#(\d+)/i, read: readKrillion },
     { id: 'perceptle', name: 'Perceptle', icon: '👁️', url: 'https://perceptle.com', better: 'high', unit: 'pts',
+      anchor: { puzzle: 120, day: '2026-11-14' },
       head: /^Perceptle\s+#(\d+)\b.*?\b([SABCDF][+-]?)\s*\((\d{1,3})\)/i, read: readPerceptle },
     { id: 'chainle', name: 'Chainle', icon: '🔗', url: 'https://chainle.io', better: 'high', unit: 'pts',
+      anchor: { puzzle: 87, day: '2026-11-14' },
       head: /^Chainle(?:\s+#(\d+))?\s*[·•|\-–—]\s*([\d][\d,.]*)/i, read: readChainle },
     { id: 'worldle', name: 'Worldle', icon: '🗺️', url: 'https://worldle.teuteuf.fr', better: 'low', unit: 'guesses',
+      anchor: { puzzle: 1758, day: '2026-11-14' },
       head: /^#Worldle\s+#(\d+)\s*(?:\(([^)]*)\))?\s*([1-6X]|😛)\/6\s*\((\d{1,3})%\)/u, read: readWorldle },
     { id: 'wordle', name: 'Wordle', icon: '🟩', url: 'https://www.nytimes.com/games/wordle/index.html', better: 'low', unit: 'guesses',
+      anchor: { puzzle: 1974, day: '2026-11-14' },
       head: /^Wordle\s+(\d[\d,.]*)\s+([1-6X])\/6(\*?)/i, read: readWordle },
     { id: 'maptap', name: 'MapTap', icon: '📍', url: 'https://www.maptap.gg', better: 'high', unit: 'pts',
       head: /^(?:https?:\/\/)?(?:www\.)?(?:maptap\.gg|maptap)\s+([A-Za-z]+)\s+(\d{1,2})\b/i, read: readMaptap },
@@ -178,8 +183,36 @@
     return out.sort(function (a, b) { return ORDER.indexOf(a.game) - ORDER.indexOf(b.game); });
   }
 
+  // ---- which day a result belongs to ----
+  // Numbered games: day = anchor day + (puzzle − anchor puzzle). The anchors were
+  // checked against every score the group posted (each one landed on its own day).
+  // MapTap and Globle print the date; MapTap leaves out the year, so the year that
+  // puts the date closest to `today` (and not after tomorrow) is used.
+  function utc(day) { var p = day.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
+  function iso(ms) { var d = new Date(ms); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); }
+  function addDays(day, n) { return iso(utc(day) + n * 864e5); }
+  function monthIndex(word) {
+    var w = String(word).toLowerCase().replace(/\.$/, '');
+    for (var i = 0; i < 12; i++) if (MONTHS[i] === w || MONTHS[i].slice(0, 3) === w.slice(0, 3)) return i;
+    return -1;
+  }
+  function dayFor(result, today) {
+    var game = BY_ID[result.game];
+    if (game.anchor && result.puzzle != null) return addDays(game.anchor.day, result.puzzle - game.anchor.puzzle);
+    var said = result.detail && result.detail.date;
+    if (!said) return null;
+    var m = said.replace(',', ' ').trim().split(/\s+/);
+    var mon = monthIndex(m[0]), dom = parseInt(m[1], 10), year = m[2] ? parseInt(m[2], 10) : null;
+    if (mon < 0 || !dom) return null;
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    if (year) return year + '-' + pad(mon + 1) + '-' + pad(dom);
+    var y = parseInt(today.slice(0, 4), 10);
+    var candidate = y + '-' + pad(mon + 1) + '-' + pad(dom);
+    return candidate > addDays(today, 1) ? (y - 1) + '-' + pad(mon + 1) + '-' + pad(dom) : candidate;
+  }
+
   // Negative when value a beats value b in this game, 0 when tied.
   function compare(gameId, a, b) { return BY_ID[gameId].better === 'low' ? a - b : b - a; }
 
-  return { LIST: LIST, BY_ID: BY_ID, ORDER: ORDER, MONTHS: MONTHS, cleanText: cleanText, readShares: readShares, compare: compare };
+  return { LIST: LIST, BY_ID: BY_ID, ORDER: ORDER, MONTHS: MONTHS, cleanText: cleanText, readShares: readShares, compare: compare, dayFor: dayFor, addDays: addDays };
 });

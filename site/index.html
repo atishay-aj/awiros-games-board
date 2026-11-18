@@ -68,7 +68,7 @@
         <textarea id="pasteBox" rows="3" placeholder="…or paste the share text here"></textarea>
         <div class="chips" id="pasteSeen" aria-live="polite"></div>
         <div class="post-foot">
-          <label class="date-field"><span class="sr-only">Day these scores are for</span><input type="date" id="postDay"></label>
+          <label class="date-field" id="postDayWrap" hidden><span class="small muted">Day for scores without a puzzle number</span><input type="date" id="postDay"></label>
           <button type="button" class="btn btn-ghost btn-sm" id="pasteClear" hidden>Clear</button>
           <button type="button" class="btn btn-primary" id="postSave" disabled>Save</button>
         </div>

@@ -10,6 +10,7 @@ A daily leaderboard for the games the Awiros WhatsApp group plays: Krillion, Per
 - **Daily score (overall ranking):** each game scores 0–100 by where you finished among that day's players (`100 × (players − place + 1) ÷ players`, ties share). Your daily score is the average of your best 4 games, rounded to a whole number, and you need 4 games that someone else also played to be ranked. Crowns 👑 still go to 1st place in each game.
 - **Standings:** week (average of best 5 daily scores, at least 3 ranked days, or fewer while the week has had fewer days with a ranking), month (best 20, at least 8) and all time (every ranked day, at least 5), with a podium, day wins, crowns per game and awards.
 - **Profiles:** streaks, per-game averages and trends, and head-to-head records.
+- **Right day, every time:** each score is filed under the day its puzzle belongs to (from the puzzle number, or the date MapTap and Globle print), not the day you paste it. A puzzle can only be posted once per player, and the API rejects a puzzle number saved on the wrong day.
 - **Sharing:** one tap posts a day or week summary to WhatsApp.
 - **App:** installable to the home screen.
 

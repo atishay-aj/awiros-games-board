@@ -92,3 +92,23 @@ test('text with no game in it gives nothing', () => {
   assert.deepEqual(readShares('good morning everyone'), []);
   assert.deepEqual(readShares(''), []);
 });
+
+test('each score is dated by its puzzle, not by the day you paste it', () => {
+  const { dayFor } = require('../site/js/games.js');
+  const today = '2026-11-18';
+  const at = (text) => dayFor(one(text), today);
+  // Played just before midnight on the 17th, pasted on the 18th: still the 17th.
+  assert.equal(at('Krillion #125 🦐\n300'), '2026-11-17');
+  assert.equal(at('Krillion #126 🦐\n300'), '2026-11-18');
+  assert.equal(at('Perceptle #124 - A (90)\n🔢 90'), '2026-11-18');
+  assert.equal(at('Chainle #91 · 4,000 🔗'), '2026-11-18');
+  assert.equal(at('#Worldle #1762 (18.11.2026) 2/6 (100%)'), '2026-11-18');
+  assert.equal(at('Wordle 1,978 3/6'), '2026-11-18');
+  assert.equal(at('Wordle 0 3/6'), '2021-06-19', 'Wordle #0 was 19 June 2021');
+  assert.equal(at('🌎 Nov 17, 2026 🌍\n🔥 1 | Avg. Guesses: 5\n🟩 = 1'), '2026-11-17');
+  assert.equal(at('www.maptap.gg November 17\n1🎯 2🎯\nFinal score: 3'), '2026-11-17');
+  // MapTap has no year: late-December shares read in early January belong to last year.
+  assert.equal(dayFor(one('MapTap December 31\n1🎯\nFinal score: 1'), '2027-01-01'), '2026-12-31');
+  // No puzzle number and no date: unknown, the page asks for the day.
+  assert.equal(at('Chainle · 980 🔗'), null);
+});

@@ -16,6 +16,19 @@ import { createClient, type User } from "npm:@supabase/supabase-js@2";
 
 const GAMES = new Set(["krillion", "perceptle", "chainle", "worldle", "wordle", "maptap", "globle"]);
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+// Numbered games: puzzle → day, the same anchors as site/js/games.js.
+const ANCHORS: Record<string, { puzzle: number; day: string }> = {
+  krillion: { puzzle: 122, day: "2026-11-14" },
+  perceptle: { puzzle: 120, day: "2026-11-14" },
+  chainle: { puzzle: 87, day: "2026-11-14" },
+  worldle: { puzzle: 1758, day: "2026-11-14" },
+  wordle: { puzzle: 1974, day: "2026-11-14" },
+};
+const dayMs = (day: string) => Date.parse(day + "T00:00:00Z");
+function puzzleDay(game: string, puzzle: number) {
+  const a = ANCHORS[game];
+  return a ? new Date(dayMs(a.day) + (puzzle - a.puzzle) * 864e5).toISOString().slice(0, 10) : null;
+}
 
 const env = (k: string) => Deno.env.get(k) ?? "";
 const origins = env("ALLOWED_ORIGINS").split(",").map((s) => s.trim()).filter(Boolean);
@@ -189,14 +202,23 @@ async function handle(req: Request) {
 
   if (post && route === "scores") {
     const body = await bodyOf(req);
-    const day = String(body.day ?? "");
-    if (!DAY.test(day) || !dayIsReasonable(day)) throw new HttpError(400, "Pick a day within the last year.");
     if (!Array.isArray(body.entries) || body.entries.length < 1 || body.entries.length > GAMES.size) throw new HttpError(400, "No scores to save.");
     const pasted = typeof body.pasted === "string" ? body.pasted.slice(0, 4000) : null;
     const now = new Date().toISOString();
-    const rows = body.entries.map(cleanEntry).map((e) => ({ ...e, user_id: user.id, played_on: day, pasted, updated_at: now }));
-    if (new Set(rows.map((r) => r.game)).size !== rows.length) throw new HttpError(400, "One score per game, please.");
+    const rows = body.entries.map((raw: unknown) => {
+      const e = cleanEntry(raw);
+      const day = String((raw as Record<string, unknown>)?.day ?? body.day ?? "");
+      if (!DAY.test(day) || !dayIsReasonable(day)) throw new HttpError(400, "Pick a day within the last year.");
+      // A numbered puzzle belongs to one day (one day of slack for other time zones).
+      const expected = e.puzzle == null ? null : puzzleDay(e.game, e.puzzle);
+      if (expected && Math.abs(dayMs(day) - dayMs(expected)) > 864e5) {
+        throw new HttpError(400, `${e.game[0].toUpperCase() + e.game.slice(1)} #${e.puzzle} is the puzzle for ${expected}, not ${day}.`);
+      }
+      return { ...e, user_id: user.id, played_on: day, pasted, updated_at: now };
+    });
+    if (new Set(rows.map((r) => r.game + "|" + r.played_on)).size !== rows.length) throw new HttpError(400, "One score per game per day, please.");
     const { error } = await db.from("scores").upsert(rows, { onConflict: "user_id,played_on,game" });
+    if (error?.code === "23505") throw new HttpError(409, "You already posted one of these puzzles on another day. Remove that score first.");
     if (error) throw error;
     return { ok: true, saved: rows.length };
   }
